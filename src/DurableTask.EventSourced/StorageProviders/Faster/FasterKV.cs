@@ -67,11 +67,11 @@ namespace DurableTask.EventSourced.Faster
             }
         }
 
-        public void CompletePending()
+        public void CompletePendingAsync()
         {
             try
             {
-                this.mainSession.CompletePending(false, false);
+                this.mainSession.CompletePendingAsync(false);
             }
             catch (Exception exception)
                 when (this.terminationToken.IsCancellationRequested && !Utils.IsFatal(exception))

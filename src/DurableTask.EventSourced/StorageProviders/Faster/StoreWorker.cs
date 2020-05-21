@@ -135,10 +135,10 @@ namespace DurableTask.EventSourced.Faster
             }
 
             this.UpdateLatencyTrend(info);
-             
+
             // to avoid unnecessary traffic for statically provisioned deployments,
             // suppress load publishing if the state is not changing
-            if (info.CommitLogPosition == this.lastPublishedCommitLogPosition 
+            if (info.CommitLogPosition == this.lastPublishedCommitLogPosition
                 && info.InputQueuePosition == this.lastPublishedInputQueuePosition
                 && info.LatencyTrend == this.lastPublishedLatencyTrend)
             {
@@ -215,7 +215,7 @@ namespace DurableTask.EventSourced.Faster
                     }
 
                     // if there are IO responses ready to process, do that first
-                    this.store.CompletePending();
+                    this.store.CompletePendingAsync();
 
                     // record the current time, for measuring latency in the event processing pipeline
                     partitionEvent.IssuedTimestamp = this.partition.CurrentTimeMs;
@@ -226,7 +226,7 @@ namespace DurableTask.EventSourced.Faster
                         case PartitionReadEvent readEvent:
                             readEvent.OnReadIssued(this.partition);
                             this.store.Read(readEvent, this.effectTracker);
-                            // we don't await async reads, they complete when CompletePending() is called
+                            // we don't await async reads, they complete when CompletePendingAsync() is called
                             break;
 
                         case PartitionUpdateEvent updateEvent:
@@ -236,6 +236,10 @@ namespace DurableTask.EventSourced.Faster
                         default:
                             throw new InvalidCastException("could not cast to neither PartitionReadEvent nor PartitionUpdateEvent");
                     }
+
+                    // Ensure that any pending requests are completed
+                    this.store.CompletePendingAsync();
+
                 }
 
                 if (this.isShuttingDown || this.cancellationToken.IsCancellationRequested)
