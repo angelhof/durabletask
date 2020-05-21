@@ -426,7 +426,11 @@ namespace DurableTask.EventSourced.Faster
 
             public void ReadCompletionCallback(ref Key key, ref EffectTracker input, ref TrackedObject output, PartitionReadEvent ctx, Status status)
             {
-                partition.Assert(ctx != null);
+                if (ctx == null)
+                {
+                    // this is not a partition read event
+                    return;
+                }
 
                 switch (status)
                 {
