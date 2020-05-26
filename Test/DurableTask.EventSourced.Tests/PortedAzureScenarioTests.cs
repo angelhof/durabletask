@@ -226,6 +226,81 @@ namespace DurableTask.EventSourced.Tests
         }
 
         /// <summary>
+        /// End-to-end test which validates the ContinueAsNew functionality by implementing a counter actor pattern.
+        /// </summary>
+        [Fact]
+        public async Task ActorOrchestrationReadMiss()
+        {
+            Func<int,Task> orchestrationStarter = async (int i) =>
+            {
+                System.Diagnostics.Trace.TraceInformation($"Starting orchestration");
+                try
+                {
+                    //var timeout = TimeSpan.FromMilliseconds(1);
+                    var instanceId = $"temp-instance{i}";
+                    //var tempClient = await host.StartOrchestrationAsync(typeof(Orchestrations.Approval), timeout, instanceId);
+                    var tempClient = await host.StartOrchestrationAsync(typeof(Orchestrations.Echo), "hi", instanceId);
+                    System.Diagnostics.Trace.TraceInformation($"Starting wait for {tempClient.InstanceId}");
+                    await tempClient.WaitForStartupAsync(TimeSpan.FromSeconds(720));
+                    // Don't send any notification - let the internal timeout expire
+                }
+                catch (Exception e)
+                {
+                    System.Diagnostics.Trace.TraceInformation($"Error in orchestration: {e}");
+                }
+                finally
+                {
+                    System.Diagnostics.Trace.TraceInformation($"Completed orchestration");
+                }
+            };
+
+
+            int initialValue = 0;
+            var client = await host.StartOrchestrationAsync(typeof(Orchestrations.Counter), initialValue);
+
+            // Need to wait for the instance to start before sending events to it.
+            // TODO: This requirement may not be ideal and should be revisited.
+            await client.WaitForStartupAsync(TimeSpan.FromSeconds(10));
+
+            // Perform some operations
+            await client.RaiseEventAsync(Orchestrations.Counter.OpEventName, Orchestrations.Counter.OpIncrement);
+            await client.RaiseEventAsync(Orchestrations.Counter.OpEventName, Orchestrations.Counter.OpIncrement);
+
+            // Evict the counter
+            int iterations = 100;
+            var tasks = new Task[iterations];
+            for (int i = 0; i < iterations; i++)
+            {
+                tasks[i] = orchestrationStarter(i);
+            }
+
+            // The 10 orchestrations above (which each delay for 10 seconds) should all complete in less than 60 seconds.
+            await Task.WhenAll(tasks);
+
+            await client.RaiseEventAsync(Orchestrations.Counter.OpEventName, Orchestrations.Counter.OpIncrement);
+            await client.RaiseEventAsync(Orchestrations.Counter.OpEventName, Orchestrations.Counter.OpDecrement);
+            await client.RaiseEventAsync(Orchestrations.Counter.OpEventName, Orchestrations.Counter.OpIncrement);
+            await Task.Delay(2000);
+
+            // Make sure it's still running and didn't complete early (or fail).
+            var status = await client.GetStatusAsync();
+            Assert.True(
+                status?.OrchestrationStatus == OrchestrationStatus.Running ||
+                status?.OrchestrationStatus == OrchestrationStatus.ContinuedAsNew);
+
+            // The end message will cause the actor to complete itself.
+            await client.RaiseEventAsync(Orchestrations.Counter.OpEventName, Orchestrations.Counter.OpEnd);
+
+            status = await client.WaitForCompletionAsync(TimeSpan.FromSeconds(10));
+
+            Assert.Equal(OrchestrationStatus.Completed, status?.OrchestrationStatus);
+            Assert.Equal(3, JToken.Parse(status?.Output));
+
+            // When using ContinueAsNew, the original input is discarded and replaced with the most recent state.
+            Assert.NotEqual(initialValue, JToken.Parse(status?.Input));
+        }
+
+        /// <summary>
         /// End-to-end test which validates the Terminate functionality.
         /// </summary>
         [Fact]
@@ -412,7 +487,7 @@ namespace DurableTask.EventSourced.Tests
         public async Task LargeInputAndOutput()
         {
             var random = new Random();
-            var bytes = new byte[5 * 1024 * 1024];
+            var bytes = new byte[5 * 1024];
             random.NextBytes(bytes);
 
             var client = await host.StartOrchestrationAsync(typeof(Orchestrations.EchoBytes), bytes);
@@ -468,6 +543,7 @@ namespace DurableTask.EventSourced.Tests
             }
             Assert.Equal(parallelOrchestrations, winner);
         }
+
 
         /// <summary>
         /// End-to-end test which validates the orchestrator's exception handling behavior.
