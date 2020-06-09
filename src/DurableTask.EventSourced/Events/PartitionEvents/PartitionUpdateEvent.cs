@@ -14,6 +14,7 @@
 using DurableTask.Core;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Runtime.Serialization;
 using System.Text;
@@ -34,6 +35,9 @@ namespace DurableTask.EventSourced
         public virtual IEnumerable<TaskMessage> TracedTaskMessages => PartitionUpdateEvent.noTaskMessages;
 
         private static IEnumerable<TaskMessage> noTaskMessages = Enumerable.Empty<TaskMessage>();
+
+        [IgnoreDataMember]
+        public double sendTime;
 
         public abstract void DetermineEffects(EffectTracker effects);
     }

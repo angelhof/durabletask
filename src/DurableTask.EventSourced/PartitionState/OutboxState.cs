@@ -69,12 +69,17 @@ namespace DurableTask.EventSourced
 
             if (!effects.IsReplaying)
             {
+                evt.sendTime = this.Partition.CurrentTimeMs;
                 DurabilityListeners.Register(evt, this); // we need to continue the send after this event is durable
             }
         }
 
         public void ConfirmDurable(Event evt)
         {
+            var partitionUpdateEvent = (PartitionUpdateEvent)evt;
+            var DurableTime = this.Partition.CurrentTimeMs;
+            var SendTime = partitionUpdateEvent.sendTime;
+            this.Partition.TraceHelper.TraceProgress($"Elapsed time until event {evt} id={evt.EventIdString} became durable: {DurableTime - SendTime}");
             long commitPosition = ((PartitionUpdateEvent)evt).NextCommitLogPosition;
             this.Partition.EventDetailTracer?.TraceEventProcessingDetail($"Store has persisted event {evt} id={evt.EventIdString}, now sending messages");
             this.Send(this.Outbox[commitPosition]);
